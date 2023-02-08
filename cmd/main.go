@@ -1,48 +1,62 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"os"
 
 	"github.com/ncruces/go-sqlite3"
 	_ "github.com/ncruces/go-sqlite3/embed"
 )
 
 func main() {
+	sqlite3.Interpreter = false
+	res1, err := test()
+	if err != nil {
+		log.Panic(err)
+	}
+
+	sqlite3.Interpreter = true
+	res2, err := test()
+	if err != nil {
+		log.Panic(err)
+	}
+
+	const want = "2.500000"
+	log.Printf("compiled %q, interpreted %q, want %q", res1, res2, want)
+	if res1 != want || res2 != want {
+		os.Exit(1)
+	}
+}
+
+func test() (string, error) {
 	db, err := sqlite3.Open(":memory:")
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer db.Close()
 
-	err = db.Exec(`CREATE TABLE IF NOT EXISTS users (id INT, name VARCHAR(10))`)
+	stmt, _, err := db.Prepare(`SELECT printf('%f', 2.5)`)
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
+	defer stmt.Close()
 
-	err = db.Exec(`INSERT INTO users(id, name) VALUES(0, 'go'), (1, 'zig'), (2, 'whatever')`)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	stmt, _, err := db.Prepare(`SELECT id, name FROM users`)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	var res string
 	for stmt.Step() {
-		fmt.Println(stmt.ColumnInt(0), stmt.ColumnText(1))
+		res = stmt.ColumnText(0)
 	}
 	if err := stmt.Err(); err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 
 	err = stmt.Close()
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
 
 	err = db.Close()
 	if err != nil {
-		log.Fatal(err)
+		return "", err
 	}
+	return res, nil
 }

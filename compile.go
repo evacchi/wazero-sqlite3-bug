@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"strconv"
-	"sync"
 	"sync/atomic"
 
 	"github.com/tetratelabs/wazero"
@@ -15,12 +14,13 @@ import (
 var (
 	Binary []byte // Binary to load.
 	Path   string // Path to load the binary from.
+
+	Interpreter bool
 )
 
 var sqlite3 sqlite3Runtime
 
 type sqlite3Runtime struct {
-	once      sync.Once
 	runtime   wazero.Runtime
 	compiled  wazero.CompiledModule
 	instances atomic.Uint64
@@ -30,7 +30,7 @@ type sqlite3Runtime struct {
 
 func (s *sqlite3Runtime) instantiateModule(ctx context.Context) (api.Module, error) {
 	s.ctx = ctx
-	s.once.Do(s.compileModule)
+	s.compileModule()
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -41,7 +41,11 @@ func (s *sqlite3Runtime) instantiateModule(ctx context.Context) (api.Module, err
 }
 
 func (s *sqlite3Runtime) compileModule() {
-	s.runtime = wazero.NewRuntime(s.ctx)
+	if Interpreter {
+		s.runtime = wazero.NewRuntimeWithConfig(s.ctx, wazero.NewRuntimeConfigInterpreter())
+	} else {
+		s.runtime = wazero.NewRuntimeWithConfig(s.ctx, wazero.NewRuntimeConfigCompiler())
+	}
 	s.err = vfsInstantiate(s.ctx, s.runtime)
 	if s.err != nil {
 		return
